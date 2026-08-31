@@ -3,52 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SweetCost Pro - Gestión de Recetas</title>
-    
+    <title>CookieCost Manager Pro</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Fonts and Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .toast-enter { transform: translateY(-100%); opacity: 0; }
-        .toast-enter-active { transform: translateY(0); opacity: 1; transition: all 300ms ease-out; }
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-    </style>
-
-    <!-- Import Maps para usar React y Firebase como módulos -->
-    <script type="importmap">
-    {
-        "imports": {
-            "react": "https://esm.sh/react@18.2.0",
-            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-            "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-            "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"
-        }
-    }
-    </script>
-    
-    <!-- Babel para compilar JSX en el navegador -->
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        .highlight-flash {
+            animation: flash 1.5s ease-out;
+        }
+        @keyframes flash {
+            0% { background-color: #fef08a; }
+            100% { background-color: transparent; }
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-100 min-h-screen">
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
-        import { createRoot } from 'react-dom/client';
-        
-        // Importaciones de Firebase
-        import { initializeApp } from 'firebase/app';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
+    <!-- Firebase y Lógica de Inicialización -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeFjx39gjV-fCkiLnI38sWs6xWd6hm8Sg",
@@ -60,287 +43,618 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        window.db = getFirestore(app);
+        window.auth = getAuth(app);
+        
+        window.fs = { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc };
 
-        // Utilidades
-        const formatCurrency = (val) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(val || 0);
-        const generateId = () => Math.random().toString(36).substr(2, 9);
+        signInAnonymously(window.auth).then(() => {
+            if(window.initReactApp) window.initReactApp();
+        }).catch(error => {
+            console.error("Error conectando a la nube:", error);
+            document.getElementById("root").innerHTML = "<div class='p-10 text-center text-red-500'>Error de conexión a la base de datos. Verifica la consola.</div>";
+        });
+    </script>
+
+    <!-- Aplicación React -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Componente reutilizable para el Botón de Ayuda
+        const HelpBtn = ({ text }) => {
+            const [show, setShow] = useState(false);
+            return (
+                <span className="relative inline-block ml-2 cursor-pointer">
+                    <button type="button" onClick={() => setShow(!show)} onBlur={() => setTimeout(() => setShow(false), 200)} className="text-gray-400 hover:text-blue-600 focus:outline-none transition-colors">
+                        <i className="fas fa-question-circle"></i>
+                    </button>
+                    {show && (
+                        <div className="absolute z-50 w-64 p-3 mt-2 text-sm font-normal text-white bg-gray-800 rounded-lg shadow-xl -left-28 top-full transform transition-all">
+                            {text}
+                            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+                        </div>
+                    )}
+                </span>
+            );
+        };
 
         function App() {
             const [activeTab, setActiveTab] = useState('inventory');
             const [inventory, setInventory] = useState([]);
             const [recipes, setRecipes] = useState([]);
-            const [toast, setToast] = useState(null);
-            const [user, setUser] = useState(null);
+            const [sales, setSales] = useState([]);
             const [loading, setLoading] = useState(true);
 
-            const showToast = (message, type = 'success') => {
-                setToast({ message, type });
-                setTimeout(() => setToast(null), 3000);
-            };
-
-            // Autenticación Anónima
             useEffect(() => {
-                const initAuth = async () => {
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.error("Error de autenticación:", error);
-                        showToast("Error al conectar con la base de datos", "error");
-                    }
-                };
-                initAuth();
-                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser);
+                const unsubInv = window.fs.onSnapshot(window.fs.collection(window.db, "inventory"), (snapshot) => {
+                    setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 });
-                return () => unsubscribe();
+                const unsubRec = window.fs.onSnapshot(window.fs.collection(window.db, "recipes"), (snapshot) => {
+                    setRecipes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                });
+                const unsubSales = window.fs.onSnapshot(window.fs.collection(window.db, "sales"), (snapshot) => {
+                    setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    setLoading(false);
+                });
+                return () => { unsubInv(); unsubRec(); unsubSales(); };
             }, []);
 
-            useEffect(() => {
-                if (!user) return;
-
-                // Suscripción a Inventario
-                const unsubInventory = onSnapshot(collection(db, 'inventory'), (snapshot) => {
-                    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setInventory(items);
-                }, (error) => console.error("Error al cargar inventario:", error));
-
-                // Suscripción a Recetas
-                const unsubRecipes = onSnapshot(collection(db, 'recipes'), (snapshot) => {
-                    const rec = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setRecipes(rec);
-                    setLoading(false);
-                }, (error) => console.error("Error al cargar recetas:", error));
-
-                return () => {
-                    unsubInventory();
-                    unsubRecipes();
-                };
-            }, [user]);
-
-            if (loading) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-50 text-indigo-600">
-                        <i className="fas fa-circle-notch fa-spin text-4xl mb-2 block text-center"></i>
-                        <p className="ml-3 font-semibold text-lg">Conectando a la nube...</p>
-                    </div>
-                );
-            }
+            window.initReactApp = () => setLoading(false);
+            if (loading) return <div className="flex h-screen items-center justify-center text-xl font-bold text-blue-600"><i className="fas fa-spinner fa-spin mr-3"></i> Conectando a la nube...</div>;
 
             return (
-                <div className="min-h-screen flex flex-col md:flex-row">
-                    {/* Toast Notification */}
-                    {toast && (
-                        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-xl text-white font-medium flex items-center gap-3 transition-all duration-300
-                            ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'}`}>
-                            <i className={`fas ${toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} text-xl`}></i>
-                            {toast.message}
-                        </div>
-                    )}
-
-                    {/* Sidebar Navegación */}
-                    <div className="w-full md:w-64 bg-slate-900 text-white shadow-xl flex-shrink-0 flex flex-col">
-                        <div className="p-6 pb-4">
-                            <h1 className="text-2xl font-black text-indigo-400 flex items-center gap-2">
-                                <i className="fas fa-cloud text-indigo-500"></i> SweetCost
-                            </h1>
-                            <p className="text-slate-400 text-xs mt-1 font-medium tracking-wide">Sincronización en la nube activa</p>
-                        </div>
-                        <nav className="mt-4 flex flex-row md:flex-col gap-2 px-4 overflow-x-auto md:overflow-visible pb-4 md:pb-0 flex-1">
-                            <button onClick={() => setActiveTab('inventory')}
-                                className={`flex items-center gap-3 w-full p-3.5 rounded-xl text-left transition-all whitespace-nowrap font-medium
-                                    ${activeTab === 'inventory' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                                <i className="fas fa-boxes w-5 text-center"></i> Inventario
-                            </button>
-                            <button onClick={() => setActiveTab('recipes')}
-                                className={`flex items-center gap-3 w-full p-3.5 rounded-xl text-left transition-all whitespace-nowrap font-medium
-                                    ${activeTab === 'recipes' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                                <i className="fas fa-book-open w-5 text-center"></i> Gestión Recetas
-                            </button>
-                            <button onClick={() => setActiveTab('costing')}
-                                className={`flex items-center gap-3 w-full p-3.5 rounded-xl text-left transition-all whitespace-nowrap font-medium
-                                    ${activeTab === 'costing' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                                <i className="fas fa-calculator w-5 text-center"></i> Análisis y Costeo
-                            </button>
+                <div className="max-w-6xl mx-auto p-4">
+                    <header className="bg-white shadow rounded-lg mb-6 p-4 flex justify-between items-center overflow-x-auto">
+                        <h1 className="text-2xl font-extrabold text-gray-800 whitespace-nowrap"><i className="fas fa-cookie-bite text-orange-500"></i> CookieCost Pro</h1>
+                        <nav className="flex space-x-2 ml-4">
+                            <TabBtn active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} icon="fa-box" text="Inventario" />
+                            <TabBtn active={activeTab === 'recipes'} onClick={() => setActiveTab('recipes')} icon="fa-book" text="Recetas" />
+                            <TabBtn active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon="fa-calculator" text="Análisis" />
+                            <TabBtn active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} icon="fa-chart-line" text="Ventas" />
                         </nav>
-                        <div className="p-4 text-center border-t border-slate-800 mt-auto hidden md:block">
-                            <p className="text-[10px] text-slate-500 font-medium">Powered by Firebase & React</p>
+                    </header>
+
+                    <main className="bg-white shadow rounded-lg p-6">
+                        {activeTab === 'inventory' && <Inventory inventory={inventory} />}
+                        {activeTab === 'recipes' && <Recipes recipes={recipes} inventory={inventory} />}
+                        {activeTab === 'analysis' && <Analysis recipes={recipes} inventory={inventory} />}
+                        {activeTab === 'sales' && <Sales sales={sales} recipes={recipes} />}
+                    </main>
+                </div>
+            );
+        }
+
+        const TabBtn = ({ active, onClick, icon, text }) => (
+            <button onClick={onClick} className={`px-4 py-2 rounded-md font-semibold flex items-center ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                <i className={`fas ${icon} mr-2`}></i> {text}
+            </button>
+        );
+
+        // --- MÓDULO: INVENTARIO ---
+        function Inventory({ inventory }) {
+            const [form, setForm] = useState({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' });
+            const [editId, setEditId] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterCategory, setFilterCategory] = useState('All');
+            const [sortBy, setSortBy] = useState('name-asc');
+            const formRef = useRef(null);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (editId) {
+                    await window.fs.updateDoc(window.fs.doc(window.db, "inventory", editId), form);
+                    setEditId(null);
+                } else {
+                    await window.fs.addDoc(window.fs.collection(window.db, "inventory"), form);
+                }
+                setForm({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' });
+            };
+
+            const handleEdit = (item) => {
+                setForm(item);
+                setEditId(item.id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (formRef.current) {
+                    formRef.current.classList.remove('highlight-flash');
+                    void formRef.current.offsetWidth;
+                    formRef.current.classList.add('highlight-flash');
+                }
+            };
+
+            const handleDelete = async (id) => {
+                if (window.confirm('¿Estás seguro de que deseas eliminar este elemento del inventario?')) {
+                    await window.fs.deleteDoc(window.fs.doc(window.db, "inventory", id));
+                }
+            };
+
+            let filteredList = inventory.filter(i => 
+                i.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
+                (filterCategory === 'All' || i.category === filterCategory)
+            );
+
+            filteredList.sort((a, b) => {
+                if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+                if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
+                if (sortBy === 'price-asc') return (a.price / a.qty) - (b.price / b.qty);
+                if (sortBy === 'price-desc') return (b.price / b.qty) - (a.price / a.qty);
+            });
+
+            return (
+                <div>
+                    <h2 className="text-xl font-bold mb-4 border-b pb-2 flex items-center">
+                        Gestión de Inventario 
+                        <HelpBtn text="Registra aquí todos tus insumos. Ingresa el total que compraste (ej. si compras 1kg, escribe 1000 y elige gramos) y cuánto pagaste por ese total. El sistema calculará el costo por gramo/pieza automáticamente." />
+                    </h2>
+                    <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-8 p-4 rounded-lg border transition-colors duration-300">
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium mb-1">Nombre</label>
+                            <input required type="text" className="w-full border p-2 rounded" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
                         </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Cant. Compra</label>
+                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.qty} onChange={e => setForm({...form, qty: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Unidad</label>
+                            <select className="w-full border p-2 rounded" value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}>
+                                <option value="g">Gramos (g)</option>
+                                <option value="ml">Mililitros (ml)</option>
+                                <option value="pza">Pieza (pza)</option>
+                                <option value="kg">Kilogramos (kg)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Precio Total</label>
+                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.price} onChange={e => setForm({...form, price: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Categoría</label>
+                            <select className="w-full border p-2 rounded" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                                <option>Ingrediente</option>
+                                <option>Empaque</option>
+                            </select>
+                        </div>
+                        <div className="md:col-span-6 flex justify-end gap-2">
+                            {editId && <button type="button" onClick={() => {setEditId(null); setForm({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' })}} className="bg-gray-400 text-white px-4 py-2 rounded">Cancelar</button>}
+                            <button type="submit" className={`px-4 py-2 rounded text-white ${editId ? 'bg-green-600' : 'bg-blue-600'}`}>{editId ? 'Actualizar Producto' : 'Guardar Producto'}</button>
+                        </div>
+                    </form>
+
+                    <div className="flex flex-col md:flex-row gap-4 mb-4 bg-gray-50 p-3 rounded border">
+                        <input type="text" placeholder="Buscar producto..." className="border p-2 rounded flex-1" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <select className="border p-2 rounded" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+                            <option value="All">Todas las categorías</option>
+                            <option value="Ingrediente">Solo Ingredientes</option>
+                            <option value="Empaque">Solo Empaques</option>
+                        </select>
+                        <select className="border p-2 rounded" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                            <option value="name-asc">Nombre (A-Z)</option>
+                            <option value="name-desc">Nombre (Z-A)</option>
+                            <option value="price-asc">Precio Unitario (Menor a Mayor)</option>
+                            <option value="price-desc">Precio Unitario (Mayor a Menor)</option>
+                        </select>
                     </div>
 
-                    {/* Main Content Area */}
-                    <div className="flex-1 overflow-auto bg-slate-50 p-4 md:p-8">
-                        {activeTab === 'inventory' && <InventoryTab inventory={inventory} showToast={showToast} />}
-                        {activeTab === 'recipes' && <RecipeManagerTab inventory={inventory} recipes={recipes} showToast={showToast} />}
-                        {activeTab === 'costing' && <CostAnalysisTab inventory={inventory} recipes={recipes} showToast={showToast} />}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-gray-800 text-white">
+                                    <th className="p-3 border">Nombre</th>
+                                    <th className="p-3 border">Categoría</th>
+                                    <th className="p-3 border">Cant. Compra</th>
+                                    <th className="p-3 border">Precio Compra</th>
+                                    <th className="p-3 border">Costo Unitario</th>
+                                    <th className="p-3 border">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredList.map(item => (
+                                    <tr key={item.id} className="hover:bg-gray-100 border-b">
+                                        <td className="p-3">{item.name}</td>
+                                        <td className="p-3"><span className={`px-2 py-1 rounded text-xs text-white ${item.category === 'Ingrediente' ? 'bg-green-500' : 'bg-purple-500'}`}>{item.category}</span></td>
+                                        <td className="p-3">{item.qty} {item.unit}</td>
+                                        <td className="p-3">${item.price.toFixed(2)}</td>
+                                        <td className="p-3 font-semibold text-blue-600">${(item.price / item.qty).toFixed(4)} /{item.unit}</td>
+                                        <td className="p-3 flex space-x-2">
+                                            <button onClick={() => handleEdit(item)} className="text-yellow-600 hover:text-yellow-800"><i className="fas fa-edit"></i></button>
+                                            <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800"><i className="fas fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredList.length === 0 && <tr><td colSpan="6" className="text-center p-4 text-gray-500">No hay productos que coincidan.</td></tr>}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             );
         }
 
-        function InventoryTab({ inventory, showToast }) {
-            const [formData, setFormData] = useState({ id: '', name: '', quantity: '', unit: 'g', price: '', category: 'Ingrediente' });
-            const [isEditing, setIsEditing] = useState(false);
+        // --- MÓDULO: RECETAS ---
+        function Recipes({ recipes, inventory }) {
+            const [viewMode, setViewMode] = useState('edit');
+            const [form, setForm] = useState({ name: '', ingredients: [], instructions: '' });
+            const [editId, setEditId] = useState('');
+            const ingList = inventory.filter(i => i.category === 'Ingrediente');
 
-            const sortedInventory = useMemo(() => {
-                return [...inventory].sort((a, b) => a.name.localeCompare(b.name));
-            }, [inventory]);
+            const resetForm = () => { setForm({ name: '', ingredients: [], instructions: '' }); setEditId(''); };
+            const handleLoadRecipe = (id) => {
+                if(!id) { resetForm(); return; }
+                setForm(recipes.find(x => x.id === id));
+                setEditId(id);
+            };
+            const handleAddIngredient = () => setForm({ ...form, ingredients: [...form.ingredients, { invId: '', qty: '' }] });
+            const handleIngChange = (index, field, val) => {
+                const newIng = [...form.ingredients];
+                newIng[index][field] = val;
+                setForm({ ...form, ingredients: newIng });
+            };
+            const handleRemoveIng = (index) => setForm({ ...form, ingredients: form.ingredients.filter((_, i) => i !== index) });
 
-            const handleSubmit = async (e) => {
-                e.preventDefault();
-                const qty = parseFloat(formData.quantity);
-                const prc = parseFloat(formData.price);
-                
-                if (!formData.name || isNaN(qty) || isNaN(prc) || qty <= 0 || prc < 0) {
-                    showToast('Por favor llena los campos numéricos correctamente', 'error');
-                    return;
+            const handleSave = async () => {
+                if(!form.name) return alert("Ponle nombre a la receta");
+                if (editId) {
+                    await window.fs.updateDoc(window.fs.doc(window.db, "recipes", editId), form);
+                    alert("Receta actualizada");
+                } else {
+                    await window.fs.addDoc(window.fs.collection(window.db, "recipes"), form);
+                    alert("Receta creada");
                 }
-
-                const dataToSave = {
-                    name: formData.name,
-                    quantity: qty,
-                    unit: formData.unit,
-                    price: prc,
-                    unitPrice: prc / qty,
-                    category: formData.category
-                };
-
-                try {
-                    if (isEditing && formData.id) {
-                        await setDoc(doc(db, 'inventory', formData.id), dataToSave);
-                        showToast('Producto actualizado en la nube');
-                    } else {
-                        await addDoc(collection(db, 'inventory'), dataToSave);
-                        showToast('Producto agregado exitosamente');
-                    }
-                    handleReset();
-                } catch (error) {
-                    console.error("Error guardando:", error);
-                    showToast('Error al guardar en la nube', 'error');
-                }
+                resetForm();
             };
 
-            const handleEdit = (item) => {
-                setFormData(item);
-                setIsEditing(true);
-            };
-
-            const handleDelete = async (id) => {
-                try {
-                    await deleteDoc(doc(db, 'inventory', id));
-                    showToast('Producto eliminado permanentemente');
-                } catch (error) {
-                    showToast('Error al eliminar', 'error');
+            const handleDelete = async () => {
+                if (editId && window.confirm('¿Seguro que deseas ELIMINAR esta receta de forma permanente?')) {
+                    await window.fs.deleteDoc(window.fs.doc(window.db, "recipes", editId));
+                    resetForm();
                 }
-            };
-
-            const handleReset = () => {
-                setFormData({ id: '', name: '', quantity: '', unit: 'g', price: '', category: 'Ingrediente' });
-                setIsEditing(false);
             };
 
             return (
-                <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <i className={`fas ${isEditing ? 'fa-edit text-amber-500' : 'fa-plus-circle text-indigo-500'}`}></i>
-                            {isEditing ? 'Actualizar Producto' : 'Registrar Nuevo Producto'}
-                        </h2>
-                        
-                        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-5 items-end">
-                            <div className="lg:col-span-2">
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nombre</label>
-                                <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium" placeholder="Ej. Harina" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Cantidad</label>
-                                <input type="number" step="any" required value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium" placeholder="0.00" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Unidad</label>
-                                <select value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700">
-                                    <option value="g">Gramos (g)</option>
-                                    <option value="kg">Kilogramos (kg)</option>
-                                    <option value="ml">Mililitros (ml)</option>
-                                    <option value="l">Litros (l)</option>
-                                    <option value="pza">Pieza (pza)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Precio ($)</label>
-                                <input type="number" step="any" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium" placeholder="0.00" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Categoría</label>
-                                <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700">
-                                    <option value="Ingrediente">Ingrediente</option>
-                                    <option value="Empaque">Empaque</option>
+                <div>
+                    <div className="flex border-b mb-4">
+                        <button className={`px-4 py-2 font-bold ${viewMode === 'edit' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setViewMode('edit')}>Crear/Editar Receta</button>
+                        <button className={`px-4 py-2 font-bold ${viewMode === 'consult' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setViewMode('consult')}>Consultar Recetas</button>
+                    </div>
+
+                    {viewMode === 'edit' && (
+                        <div className="max-w-3xl">
+                            <div className="mb-4 bg-blue-50 p-4 rounded-lg border">
+                                <label className="block text-sm font-bold mb-1">
+                                    Seleccionar Receta Existente (Para Actualizar)
+                                    <HelpBtn text="Selecciona una receta de esta lista si deseas modificar sus ingredientes o instrucciones. Si quieres crear una desde cero, déjalo en 'Crear Nueva Receta'." />
+                                </label>
+                                <select className="w-full border p-2 rounded" value={editId} onChange={(e) => handleLoadRecipe(e.target.value)}>
+                                    <option value="">-- Crear Nueva Receta --</option>
+                                    {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                 </select>
                             </div>
 
-                            <div className="lg:col-span-6 flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
-                                {isEditing && (
-                                    <button type="button" onClick={handleReset} className="px-5 py-2.5 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors font-semibold">
-                                        Cancelar
-                                    </button>
-                                )}
-                                <button type="submit" className={`px-6 py-2.5 rounded-xl text-white font-bold transition-all shadow-md active:scale-95
-                                    ${isEditing ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'}`}>
-                                    <i className={`fas ${isEditing ? 'fa-save' : 'fa-cloud-upload-alt'} mr-2`}></i>
-                                    {isEditing ? 'Actualizar' : 'Guardar'}
-                                </button>
+                            <div className="mb-4">
+                                <label className="block font-bold mb-1">Nombre de la Receta</label>
+                                <input type="text" className="w-full border p-2 rounded font-bold text-lg" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Ej. Pastel de Chocolate" />
                             </div>
+
+                            <div className="mb-4">
+                                <label className="block font-bold mb-1">Instrucciones de Preparación</label>
+                                <textarea className="w-full border p-2 rounded" rows="4" value={form.instructions || ''} onChange={e => setForm({...form, instructions: e.target.value})} placeholder="1. Precalentar horno...\n2. Mezclar secos..."></textarea>
+                            </div>
+
+                            <h3 className="font-bold text-gray-700 mb-2 border-b pb-1">Ingredientes</h3>
+                            {form.ingredients.map((ing, i) => (
+                                <div key={i} className="flex gap-2 mb-2 items-center">
+                                    <select className="flex-1 border p-2 rounded" value={ing.invId} onChange={e => handleIngChange(i, 'invId', e.target.value)}>
+                                        <option value="">Selecciona ingrediente...</option>
+                                        {ingList.map(inv => <option key={inv.id} value={inv.id}>{inv.name} ({inv.unit})</option>)}
+                                    </select>
+                                    <input type="number" placeholder="Cantidad" className="w-32 border p-2 rounded" value={ing.qty} onChange={e => handleIngChange(i, 'qty', Number(e.target.value))} />
+                                    <button onClick={() => handleRemoveIng(i)} className="bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600"><i className="fas fa-times"></i></button>
+                                </div>
+                            ))}
+                            
+                            <button onClick={handleAddIngredient} className="text-blue-600 font-bold mt-2 hover:underline"><i className="fas fa-plus"></i> Agregar Ingrediente</button>
+
+                            <div className="mt-8 pt-4 border-t flex justify-end gap-3">
+                                {editId && <button onClick={handleDelete} className="bg-red-600 text-white px-4 py-2 rounded shadow hover:bg-red-700">Eliminar Receta</button>}
+                                <button onClick={resetForm} className="bg-gray-400 text-white px-4 py-2 rounded shadow hover:bg-gray-500">Limpiar / Cancelar</button>
+                                <button onClick={handleSave} className="bg-green-600 text-white px-4 py-2 rounded shadow font-bold hover:bg-green-700">{editId ? 'Actualizar Receta' : 'Guardar Receta'}</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {viewMode === 'consult' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {recipes.map(r => (
+                                <div key={r.id} className="border p-4 rounded-lg shadow-sm bg-gray-50">
+                                    <h3 className="text-xl font-bold text-gray-800 mb-2 border-b pb-2">{r.name}</h3>
+                                    <p className="font-bold text-sm text-gray-600 mt-2">Ingredientes:</p>
+                                    <ul className="list-disc pl-5 text-sm mb-4">
+                                        {r.ingredients.map((ing, i) => {
+                                            const dbItem = inventory.find(x => x.id === ing.invId);
+                                            return <li key={i}>{dbItem ? `${dbItem.name}: ${ing.qty}${dbItem.unit}` : 'Ingrediente eliminado'}</li>
+                                        })}
+                                    </ul>
+                                    <p className="font-bold text-sm text-gray-600">Instrucciones:</p>
+                                    <p className="text-sm whitespace-pre-wrap bg-white p-3 border rounded mt-1">{r.instructions || 'Sin instrucciones'}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // --- MÓDULO: ANÁLISIS Y COSTEO ---
+        function Analysis({ recipes, inventory }) {
+            const [selRecipeId, setSelRecipeId] = useState('');
+            const [packaging, setPackaging] = useState([]);
+            // Ahora los porcentajes son editables por el usuario
+            const [prodVars, setProdVars] = useState({ 
+                totalPieces: 10, 
+                piecesPerPack: 1,
+                marginError: 5,
+                opFee: 10,
+                utility: 50
+            });
+
+            const recipe = recipes.find(r => r.id === selRecipeId);
+            const empList = inventory.filter(i => i.category === 'Empaque');
+
+            const handleAddPackaging = () => setPackaging([...packaging, { invId: '', qty: 1 }]);
+            const handlePackChange = (index, field, val) => {
+                const newPack = [...packaging];
+                newPack[index][field] = val;
+                setPackaging(newPack);
+            };
+            const handleRemovePack = (index) => setPackaging(packaging.filter((_, i) => i !== index));
+
+            // Cálculos
+            let totalMP = 0;
+            if (recipe) {
+                recipe.ingredients.forEach(ing => {
+                    const item = inventory.find(x => x.id === ing.invId);
+                    if (item) totalMP += (item.price / item.qty) * ing.qty;
+                });
+            }
+
+            let totalEmp = 0;
+            packaging.forEach(pack => {
+                const item = inventory.find(x => x.id === pack.invId);
+                if (item) totalEmp += (item.price / item.qty) * pack.qty;
+            });
+
+            const totalPackages = prodVars.totalPieces / (prodVars.piecesPerPack || 1);
+            
+            // Fórmulas actualizadas para usar las variables editables
+            const marginErrorVal = totalMP * (prodVars.marginError / 100);
+            const opFeeVal = totalMP * (prodVars.opFee / 100);
+            const adjustedRM = totalMP + marginErrorVal + opFeeVal;
+            
+            // Utilidad dinámica
+            const percUtil = prodVars.utility / 100;
+            const utilityVal = percUtil < 1 ? (adjustedRM * percUtil) / (1 - percUtil) : 0; // Evitar división por cero si es 100%
+
+            const priceWoVat = (adjustedRM + utilityVal) / totalPackages;
+            const vat = priceWoVat * 0.16;
+            const terminalFee = priceWoVat * 0.0406;
+            
+            const exactFinalPrice = priceWoVat + vat + terminalFee + totalEmp;
+            const finalPriceRounded = Math.round(exactFinalPrice / 5) * 5;
+
+            // Ganancias
+            const costPerPack = (adjustedRM / totalPackages) + totalEmp;
+            const profitPerPack = finalPriceRounded - costPerPack;
+            const profitPerPiece = profitPerPack / prodVars.piecesPerPack;
+            const totalProfit = profitPerPack * totalPackages;
+
+            return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div>
+                        <h2 className="text-xl font-bold mb-4 flex items-center">
+                            Configuración de Producción
+                        </h2>
+                        <select className="w-full border-2 border-blue-500 p-3 rounded font-bold mb-4" value={selRecipeId} onChange={e => setSelRecipeId(e.target.value)}>
+                            <option value="">-- Selecciona una Receta --</option>
+                            {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </select>
+
+                        {recipe && (
+                            <>
+                                {/* Empaques */}
+                                <div className="mb-4 bg-gray-50 p-4 rounded border">
+                                    <h3 className="font-bold text-gray-700 mb-2 flex items-center">
+                                        Empaques por receta
+                                        <HelpBtn text="Agrega aquí cajas, etiquetas o bolsas que se usarán para empacar la receta completa. Si haces 10 galletas y cada caja lleva 5, agrega 2 cajas aquí." />
+                                    </h3>
+                                    {packaging.map((pack, i) => (
+                                        <div key={i} className="flex gap-2 mb-2 items-center">
+                                            <select className="flex-1 border p-2 rounded" value={pack.invId} onChange={e => handlePackChange(i, 'invId', e.target.value)}>
+                                                <option value="">Selecciona empaque...</option>
+                                                {empList.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                                            </select>
+                                            <input type="number" placeholder="Cant" className="w-20 border p-2 rounded" value={pack.qty} onChange={e => handlePackChange(i, 'qty', Number(e.target.value))} />
+                                            <button onClick={() => handleRemovePack(i)} className="text-red-500 p-2"><i className="fas fa-times"></i></button>
+                                        </div>
+                                    ))}
+                                    <button onClick={handleAddPackaging} className="text-sm text-blue-600 font-bold mt-1"><i className="fas fa-plus"></i> Añadir Empaque</button>
+                                </div>
+
+                                {/* Porcentajes y variables de costo */}
+                                <div className="mb-4 bg-blue-50 p-4 rounded border border-blue-200">
+                                    <h3 className="font-bold text-gray-700 mb-3">Márgenes y Tarifas</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
+                                                Error (%)
+                                                <HelpBtn text="Porcentaje que representa el error que puede haber al medir mal las porciones o que algunas piezas se desechen. Se sugiere un valor de entre 5% y 8%." />
+                                            </label>
+                                            <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.marginError} onChange={e => setProdVars({...prodVars, marginError: Number(e.target.value)})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
+                                                T. Operativa (%)
+                                                <HelpBtn text="Corresponde al desgaste de las herramientas y al uso de servicios como luz y gas. Se sugiere un valor entre 10% y 15%." />
+                                            </label>
+                                            <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.opFee} onChange={e => setProdVars({...prodVars, opFee: Number(e.target.value)})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
+                                                Utilidad (%)
+                                                <HelpBtn text="Es el porcentaje de ganancia neta que se desea obtener sobre el precio final. Se sugiere un valor entre 50% y 65%." />
+                                            </label>
+                                            <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.utility} onChange={e => setProdVars({...prodVars, utility: Number(e.target.value)})} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Producción */}
+                                <div className="grid grid-cols-3 gap-4 mb-6 bg-orange-50 p-4 rounded border border-orange-200">
+                                    <div>
+                                        <label className="block text-xs font-bold mb-1">
+                                            Pzas Totales
+                                            <HelpBtn text="La cantidad total de piezas individuales que salen al preparar esta receta completa." />
+                                        </label>
+                                        <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.totalPieces} onChange={e => setProdVars({...prodVars, totalPieces: Number(e.target.value)})} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold mb-1">
+                                            Pzas x Paquete
+                                            <HelpBtn text="¿Cuántas piezas individuales incluye el empaque o paquete final que le vendes al cliente?" />
+                                        </label>
+                                        <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.piecesPerPack} onChange={e => setProdVars({...prodVars, piecesPerPack: Number(e.target.value)})} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold mb-1">Total Paquetes</label>
+                                        <div className="w-full border p-2 rounded bg-white text-center font-bold text-gray-600">{totalPackages.toFixed(1)}</div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {recipe ? (
+                        <div>
+                            <h2 className="text-xl font-bold mb-4 bg-gray-800 text-white p-2 rounded text-center">Hoja de Costos y Precios</h2>
+                            <table className="w-full text-left mb-6 border bg-white">
+                                <tbody>
+                                    <tr className="bg-gray-200 font-bold border-b"><td className="p-2">1. Materia Prima Total</td><td className="p-2 text-right">${totalMP.toFixed(2)}</td></tr>
+                                    <tr className="bg-gray-200 font-bold border-b"><td className="p-2">2. Empaque Total (por paquete)</td><td className="p-2 text-right">${totalEmp.toFixed(2)}</td></tr>
+                                    
+                                    <tr className="border-b text-gray-600"><td className="p-2">Precio de Venta Base (Sin Impuestos)</td><td className="p-2 text-right">${priceWoVat.toFixed(2)}</td></tr>
+                                    <tr className="border-b text-gray-600"><td className="p-2">+ IVA (16%)</td><td className="p-2 text-right">${vat.toFixed(2)}</td></tr>
+                                    <tr className="border-b text-gray-600"><td className="p-2">+ Comisión Terminal (4.06%)</td><td className="p-2 text-right">${terminalFee.toFixed(2)}</td></tr>
+                                    
+                                    <tr className="bg-blue-600 text-white font-extrabold text-lg"><td className="p-3">PRECIO FINAL (Redondeado)</td><td className="p-3 text-right">${finalPriceRounded.toFixed(2)}</td></tr>
+                                    <tr className="bg-blue-100 text-blue-800 text-xs text-center"><td colSpan="2" className="p-1">Precio sugerido exacto: ${exactFinalPrice.toFixed(2)}</td></tr>
+                                </tbody>
+                            </table>
+
+                            <div className="bg-green-50 border border-green-200 rounded p-4 shadow-sm">
+                                <h3 className="font-bold text-green-800 mb-3 border-b border-green-300 pb-1">Proyección de Ganancias</h3>
+                                <div className="flex justify-between mb-2">
+                                    <span className="text-gray-700">Ganancia por Pieza:</span>
+                                    <span className="font-bold text-green-700">${profitPerPiece.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between mb-2">
+                                    <span className="text-gray-700">Ganancia por Paquete:</span>
+                                    <span className="font-bold text-green-700">${profitPerPack.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-lg mt-2 pt-2 border-t border-green-300">
+                                    <span className="font-bold text-gray-800">Ganancia Total Producción:</span>
+                                    <span className="font-extrabold text-green-700">${totalProfit.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center border-2 border-dashed rounded-lg p-10 text-gray-400 bg-gray-50 mt-10">Selecciona una receta para ver los costos</div>
+                    )}
+                </div>
+            );
+        }
+
+        // --- MÓDULO: VENTAS ---
+        function Sales({ sales, recipes }) {
+            const [form, setForm] = useState({ recipeId: '', qty: 1, date: new Date().toISOString().split('T')[0] });
+
+            const handleRegisterSale = async (e) => {
+                e.preventDefault();
+                const r = recipes.find(x => x.id === form.recipeId);
+                if(!r) return;
+                
+                await window.fs.addDoc(window.fs.collection(window.db, "sales"), {
+                    recipeId: form.recipeId,
+                    recipeName: r.name,
+                    qty: Number(form.qty),
+                    date: form.date,
+                    timestamp: new Date().getTime()
+                });
+                alert("Venta registrada con éxito");
+                setForm({...form, qty: 1});
+            };
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const salesToday = sales.filter(s => s.date === todayStr).reduce((acc, curr) => acc + curr.qty, 0);
+            const currentMonth = todayStr.substring(0, 7);
+            const salesMonth = sales.filter(s => s.date.startsWith(currentMonth)).reduce((acc, curr) => acc + curr.qty, 0);
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-1 border rounded p-4 bg-gray-50">
+                        <h3 className="font-bold text-lg mb-4 flex items-center">
+                            Registrar Venta
+                            <HelpBtn text="Registra cada vez que vendas un paquete. Esto te permitirá llevar el control en el dashboard y ver qué recetas son las más populares." />
+                        </h3>
+                        <form onSubmit={handleRegisterSale}>
+                            <div className="mb-3">
+                                <label className="block text-sm mb-1">Producto / Receta</label>
+                                <select required className="w-full border p-2 rounded" value={form.recipeId} onChange={e => setForm({...form, recipeId: e.target.value})}>
+                                    <option value="">Selecciona...</option>
+                                    {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="mb-3">
+                                <label className="block text-sm mb-1">Paquetes Vendidos</label>
+                                <input required type="number" min="1" className="w-full border p-2 rounded" value={form.qty} onChange={e => setForm({...form, qty: e.target.value})} />
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-sm mb-1">Fecha</label>
+                                <input required type="date" className="w-full border p-2 rounded" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+                            </div>
+                            <button type="submit" className="w-full bg-purple-600 text-white font-bold py-2 rounded shadow hover:bg-purple-700">Registrar Venta</button>
                         </form>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-700">Base de Datos Registrada</h3>
-                            <span className="text-xs font-semibold text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full">{sortedInventory.length} ítems</span>
+                    <div className="md:col-span-2">
+                        <h3 className="font-bold text-lg mb-4">Dashboard de Ventas</h3>
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="bg-indigo-600 text-white p-4 rounded-lg shadow text-center">
+                                <p className="text-sm opacity-80">Paquetes vendidos hoy</p>
+                                <p className="text-4xl font-extrabold">{salesToday}</p>
+                            </div>
+                            <div className="bg-teal-600 text-white p-4 rounded-lg shadow text-center">
+                                <p className="text-sm opacity-80">Paquetes vendidos (Mes actual)</p>
+                                <p className="text-4xl font-extrabold">{salesMonth}</p>
+                            </div>
                         </div>
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-white border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider">
-                                        <th className="p-4 font-semibold">Nombre</th>
-                                        <th className="p-4 font-semibold">Categoría</th>
-                                        <th className="p-4 font-semibold text-right">Cantidad</th>
-                                        <th className="p-4 font-semibold text-right">Precio Total</th>
-                                        <th className="p-4 font-semibold text-right text-indigo-600">Precio Unitario</th>
-                                        <th className="p-4 font-semibold text-center">Acciones</th>
+
+                        <h4 className="font-bold text-gray-700 mb-2">Últimos Registros</h4>
+                        <div className="overflow-x-auto max-h-64 border rounded shadow-sm">
+                            <table className="w-full text-left text-sm bg-white">
+                                <thead className="bg-gray-100 sticky top-0">
+                                    <tr>
+                                        <th className="p-2 border-b">Fecha</th>
+                                        <th className="p-2 border-b">Producto</th>
+                                        <th className="p-2 border-b text-center">Cantidad</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {sortedInventory.length === 0 ? (
-                                        <tr><td colSpan="6" className="p-12 text-center text-slate-400 font-medium">No hay productos en tu base de datos en la nube.</td></tr>
-                                    ) : sortedInventory.map(item => (
-                                        <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors group">
-                                            <td className="p-4 font-bold text-slate-800">{item.name}</td>
-                                            <td className="p-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold 
-                                                    ${item.category === 'Ingrediente' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>
-                                                    {item.category}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-right text-slate-600 font-medium">{item.quantity} {item.unit}</td>
-                                            <td className="p-4 text-right font-medium text-slate-700">{formatCurrency(item.price)}</td>
-                                            <td className="p-4 text-right font-bold text-indigo-600 bg-indigo-50/50">{formatCurrency(item.unitPrice)}/{item.unit}</td>
-                                            <td className="p-4 flex justify-center gap-2">
-                                                <button onClick={() => handleEdit(item)} className="w-8 h-8 flex items-center justify-center text-blue-500 hover:bg-blue-100 rounded-lg transition-colors" title="Editar">
-                                                    <i className="fas fa-pen text-sm"></i>
-                                                </button>
-                                                <button onClick={() => handleDelete(item.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-lg transition-colors" title="Eliminar">
-                                                    <i className="fas fa-trash text-sm"></i>
-                                                </button>
-                                            </td>
+                                    {sales.sort((a,b) => b.timestamp - a.timestamp).slice(0, 20).map(s => (
+                                        <tr key={s.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-2">{s.date}</td>
+                                            <td className="p-2 font-semibold text-gray-700">{s.recipeName}</td>
+                                            <td className="p-2 text-center">{s.qty}</td>
                                         </tr>
                                     ))}
+                                    {sales.length === 0 && <tr><td colSpan="3" className="text-center p-4 text-gray-500">No hay ventas registradas aún.</td></tr>}
                                 </tbody>
                             </table>
                         </div>
@@ -349,450 +663,7 @@
             );
         }
 
-        function RecipeManagerTab({ inventory, recipes, showToast }) {
-            const [mode, setMode] = useState('create');
-            const [selectedId, setSelectedId] = useState('');
-            const [recipeName, setRecipeName] = useState('');
-            const [ingredients, setIngredients] = useState([]);
-
-            const inventoryIngredients = useMemo(() => inventory.filter(i => i.category === 'Ingrediente').sort((a,b)=>a.name.localeCompare(b.name)), [inventory]);
-
-            // Cargar receta si se edita
-            useEffect(() => {
-                if (mode === 'edit' && selectedId) {
-                    const r = recipes.find(x => x.id === selectedId);
-                    if (r) {
-                        setRecipeName(r.name);
-                        // Convertir a estructura manejable con IDs únicos para la lista
-                        setIngredients(r.ingredients.map(ing => ({ ...ing, rowId: generateId() })));
-                    }
-                } else {
-                    setRecipeName('');
-                    setIngredients([]);
-                }
-            }, [mode, selectedId, recipes]);
-
-            const addRow = () => {
-                setIngredients([...ingredients, { rowId: generateId(), inventoryId: '', quantity: '' }]);
-            };
-
-            const updateRow = (rowId, field, value) => {
-                setIngredients(ingredients.map(ing => ing.rowId === rowId ? { ...ing, [field]: value } : ing));
-            };
-
-            const removeRow = (rowId) => {
-                setIngredients(ingredients.filter(ing => ing.rowId !== rowId));
-            };
-
-            const handleSave = async () => {
-                if (!recipeName.trim()) {
-                    showToast('La receta necesita un nombre', 'error');
-                    return;
-                }
-                
-                // Filtrar filas incompletas
-                const validIngredients = ingredients.filter(i => i.inventoryId && i.quantity > 0).map(i => ({
-                    inventoryId: i.inventoryId,
-                    quantity: parseFloat(i.quantity)
-                }));
-
-                const recipeData = { name: recipeName, ingredients: validIngredients };
-
-                try {
-                    if (mode === 'edit' && selectedId) {
-                        await setDoc(doc(db, 'recipes', selectedId), recipeData);
-                        showToast('Receta actualizada correctamente');
-                    } else {
-                        await addDoc(collection(db, 'recipes'), recipeData);
-                        showToast('Nueva receta creada');
-                        setRecipeName('');
-                        setIngredients([]);
-                    }
-                } catch (error) {
-                    showToast('Error al guardar la receta', 'error');
-                }
-            };
-
-            return (
-                <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-                    {/* Controles Header */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex bg-slate-100 w-fit">
-                        <button onClick={() => { setMode('create'); setSelectedId(''); }} 
-                            className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${mode === 'create' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                            Crear Nueva Receta
-                        </button>
-                        <button onClick={() => setMode('edit')} 
-                            className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${mode === 'edit' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                            Actualizar Existente
-                        </button>
-                    </div>
-
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-                        {mode === 'edit' && (
-                            <div className="mb-8 pb-6 border-b border-slate-200">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selecciona la receta a editar</label>
-                                <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 text-lg">
-                                    <option value="" disabled>-- Elige una receta --</option>
-                                    {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                </select>
-                            </div>
-                        )}
-
-                        {(mode === 'create' || (mode === 'edit' && selectedId)) && (
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre de la Receta</label>
-                                    <input type="text" value={recipeName} onChange={e => setRecipeName(e.target.value)} placeholder="Ej. Galletas con Chispas"
-                                        className="w-full px-4 py-3 text-xl font-black bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                </div>
-
-                                <div>
-                                    <div className="flex justify-between items-center mb-4">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Ingredientes requeridos</label>
-                                        <button onClick={addRow} className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-bold transition-colors">
-                                            <i className="fas fa-plus mr-1"></i> Agregar Ingrediente
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="space-y-3">
-                                        {ingredients.map((ing, idx) => (
-                                            <div key={ing.rowId} className="flex gap-3 items-center p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                                                <span className="text-slate-400 font-bold w-6 text-center">{idx + 1}.</span>
-                                                <div className="flex-1">
-                                                    <select value={ing.inventoryId} onChange={e => updateRow(ing.rowId, 'inventoryId', e.target.value)}
-                                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
-                                                        <option value="">Seleccione ingrediente...</option>
-                                                        {inventoryIngredients.map(item => (
-                                                            <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="w-32">
-                                                    <input type="number" step="any" value={ing.quantity} onChange={e => updateRow(ing.rowId, 'quantity', e.target.value)}
-                                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-center" placeholder="Cant." />
-                                                </div>
-                                                <button onClick={() => removeRow(ing.rowId)} className="w-10 h-10 flex-shrink-0 text-red-500 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center">
-                                                    <i className="fas fa-times"></i>
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {ingredients.length === 0 && (
-                                            <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-medium">
-                                                Presiona "Agregar Ingrediente" para comenzar.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="pt-6 border-t border-slate-100">
-                                    <button onClick={handleSave} 
-                                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg rounded-xl shadow-lg shadow-emerald-600/30 transition-all active:scale-95 flex justify-center items-center gap-2">
-                                        <i className="fas fa-cloud-upload-alt"></i> Guardar Receta
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        function CostAnalysisTab({ inventory, recipes, showToast }) {
-            const [selectedRecipeId, setSelectedRecipeId] = useState('');
-            const [selectedEmpaques, setSelectedEmpaques] = useState([]);
-            
-            // Variables de producción
-            const [piezasTotales, setPiezasTotales] = useState(10);
-            const [piezasPorPaquete, setPiezasPorPaquete] = useState(1);
-            
-            // Porcentajes
-            const [margenError, setMargenError] = useState(5);
-            const [tarifaOperativa, setTarifaOperativa] = useState(10);
-            const [utilidad, setUtilidad] = useState(30);
-            const [iva, setIva] = useState(16);
-            const [comision, setComision] = useState(4.06);
-
-            const inventoryEmpaques = useMemo(() => inventory.filter(i => i.category === 'Empaque'), [inventory]);
-            
-            const recipe = useMemo(() => recipes.find(r => r.id === selectedRecipeId), [recipes, selectedRecipeId]);
-
-            const handleToggleEmpaque = (id) => {
-                setSelectedEmpaques(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-            };
-
-            const calculations = useMemo(() => {
-                if (!recipe) return null;
-
-                // 1. Materia Prima
-                let costoTotalMateriaPrima = 0;
-                const ingredientesProcesados = recipe.ingredients.map(ing => {
-                    const invItem = inventory.find(i => i.id === ing.inventoryId);
-                    const unitPrice = invItem ? invItem.unitPrice : 0;
-                    const costo = ing.quantity * unitPrice;
-                    costoTotalMateriaPrima += costo;
-                    return { ...ing, invItem, costo };
-                });
-
-                // 2. Empaque
-                let costoPorEmpaque = 0;
-                selectedEmpaques.forEach(empId => {
-                    const e = inventory.find(i => i.id === empId);
-                    if (e) costoPorEmpaque += e.unitPrice;
-                });
-
-                // 3. Variables de Producción
-                const pt = parseFloat(piezasTotales) || 0;
-                const ppp = parseFloat(piezasPorPaquete) || 1;
-                const paquetesTotales = ppp > 0 ? (pt / ppp) : 0;
-
-                // 4. Tabla de Costos
-                const valMargenError = costoTotalMateriaPrima * (parseFloat(margenError) / 100 || 0);
-                const valTarifaOperativa = costoTotalMateriaPrima * (parseFloat(tarifaOperativa) / 100 || 0);
-                const costoAjustado = costoTotalMateriaPrima + valMargenError + valTarifaOperativa;
-                
-                const ut = parseFloat(utilidad) || 0;
-                const divisorUtilidad = Math.max(0.01, 100 - ut);
-                const valUtilidad = (costoAjustado * ut) / divisorUtilidad;
-
-                const precioVentaSinIva = paquetesTotales > 0 ? ((costoAjustado + valUtilidad) / paquetesTotales) : 0;
-                
-                const valIva = precioVentaSinIva * (parseFloat(iva) / 100 || 0);
-                const valComision = precioVentaSinIva * (parseFloat(comision) / 100 || 0);
-                
-                const precioVentaFinal = precioVentaSinIva + valIva + valComision + costoPorEmpaque;
-                
-                const costoProduccion = paquetesTotales > 0 ? ((costoTotalMateriaPrima / paquetesTotales) + costoPorEmpaque) : 0;
-
-                return {
-                    ingredientesProcesados,
-                    costoTotalMateriaPrima,
-                    costoPorEmpaque,
-                    paquetesTotales,
-                    valMargenError,
-                    valTarifaOperativa,
-                    costoAjustado,
-                    valUtilidad,
-                    precioVentaSinIva,
-                    valIva,
-                    valComision,
-                    precioVentaFinal,
-                    costoProduccion
-                };
-            }, [recipe, inventory, selectedEmpaques, piezasTotales, piezasPorPaquete, margenError, tarifaOperativa, utilidad, iva, comision]);
-
-            return (
-                <div className="max-w-7xl mx-auto space-y-6 pb-12 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Análisis de Costos: Selecciona Receta</label>
-                        <select value={selectedRecipeId} onChange={e => setSelectedRecipeId(e.target.value)}
-                            className="w-full max-w-md px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-800 text-lg">
-                            <option value="" disabled>-- Elige una receta para calcular --</option>
-                            {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
-                    </div>
-
-                    {recipe && calculations && (
-                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                            
-                            {/* Columna Izquierda: Listas y Variables */}
-                            <div className="xl:col-span-7 space-y-6">
-                                
-                                {/* Materia Prima */}
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="bg-slate-800 p-4">
-                                        <h3 className="text-white font-bold flex items-center gap-2"><i className="fas fa-leaf text-emerald-400"></i> Materia Prima</h3>
-                                    </div>
-                                    <div className="p-0 overflow-x-auto">
-                                        <table className="w-full text-left border-collapse text-sm">
-                                            <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500">
-                                                    <th className="p-3 font-semibold">Ingrediente</th>
-                                                    <th className="p-3 font-semibold text-right">Cantidad Req.</th>
-                                                    <th className="p-3 font-semibold text-right">Costo Unit.</th>
-                                                    <th className="p-3 font-semibold text-right text-slate-800">Costo ($)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {calculations.ingredientesProcesados.map((ing, i) => (
-                                                    <tr key={i} className="border-b border-slate-100">
-                                                        <td className="p-3 font-medium text-slate-700">
-                                                            {ing.invItem ? ing.invItem.name : <span className="text-red-500">No encontrado</span>}
-                                                        </td>
-                                                        <td className="p-3 text-right">{ing.quantity} {ing.invItem?.unit}</td>
-                                                        <td className="p-3 text-right text-slate-500">{formatCurrency(ing.invItem?.unitPrice)}</td>
-                                                        <td className="p-3 text-right font-bold text-slate-700">{formatCurrency(ing.costo)}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                            <tfoot>
-                                                <tr className="bg-indigo-50/50">
-                                                    <td colSpan="3" className="p-3 text-right font-bold text-slate-700">Costo total materia prima:</td>
-                                                    <td className="p-3 text-right font-black text-indigo-700 text-lg">{formatCurrency(calculations.costoTotalMateriaPrima)}</td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                {/* Empaques */}
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="bg-slate-800 p-4">
-                                        <h3 className="text-white font-bold flex items-center gap-2"><i className="fas fa-box text-amber-400"></i> Empaques (Por paquete)</h3>
-                                    </div>
-                                    <div className="p-6">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                                            {inventoryEmpaques.map(item => (
-                                                <label key={item.id} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all
-                                                    ${selectedEmpaques.includes(item.id) ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                                    <input type="checkbox" checked={selectedEmpaques.includes(item.id)} onChange={() => handleToggleEmpaque(item.id)}
-                                                        className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500" />
-                                                    <div className="ml-3 flex-1 flex justify-between text-sm">
-                                                        <span className="font-bold text-slate-700">{item.name}</span>
-                                                        <span className="text-slate-500 font-medium">{formatCurrency(item.unitPrice)}</span>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                            {inventoryEmpaques.length === 0 && <p className="text-slate-400 text-sm">No hay empaques en el inventario.</p>}
-                                        </div>
-                                        <div className="flex justify-between items-center pt-4 border-t border-slate-200 bg-amber-50/30 p-3 rounded-lg">
-                                            <span className="font-bold text-slate-700">Costo por empaque:</span>
-                                            <span className="font-black text-amber-600 text-lg">{formatCurrency(calculations.costoPorEmpaque)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Variables de Producción */}
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="bg-slate-800 p-4">
-                                        <h3 className="text-white font-bold flex items-center gap-2"><i className="fas fa-cogs text-blue-400"></i> Variables de Producción</h3>
-                                    </div>
-                                    <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-6 items-center">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Piezas Totales</label>
-                                            <input type="number" step="any" value={piezasTotales} onChange={e => setPiezasTotales(e.target.value)}
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-center text-lg" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Piezas x Paquete</label>
-                                            <input type="number" step="any" value={piezasPorPaquete} onChange={e => setPiezasPorPaquete(e.target.value)}
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-center text-lg" />
-                                        </div>
-                                        <div className="bg-blue-600 text-white p-4 rounded-xl text-center shadow-inner">
-                                            <span className="block text-xs font-bold uppercase tracking-wider opacity-80 mb-1">Paquetes Totales</span>
-                                            <span className="block text-3xl font-black">{calculations.paquetesTotales.toFixed(2)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            {/* Columna Derecha: Tabla de Costos Final */}
-                            <div className="xl:col-span-5 relative">
-                                <div className="bg-white rounded-2xl shadow-xl border border-indigo-100 overflow-hidden sticky top-6">
-                                    <div className="bg-indigo-600 p-5 text-center">
-                                        <h3 className="text-white font-black text-xl flex justify-center items-center gap-2">
-                                            <i className="fas fa-chart-pie"></i> Tabla de Costos y Precios
-                                        </h3>
-                                    </div>
-                                    
-                                    <div className="p-0">
-                                        <table className="w-full text-left text-sm border-collapse">
-                                            <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500">
-                                                    <th className="p-3 font-semibold">Concepto</th>
-                                                    <th className="p-3 font-semibold text-center w-24">Porcentaje</th>
-                                                    <th className="p-3 font-semibold text-right">Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr className="border-b border-slate-100">
-                                                    <td className="p-3 font-medium text-slate-600">Margen de error</td>
-                                                    <td className="p-2 text-center">
-                                                        <div className="relative">
-                                                            <input type="number" value={margenError} onChange={e=>setMargenError(e.target.value)} className="w-full py-1 text-center border border-slate-300 rounded font-bold outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 pr-4"/>
-                                                            <span className="absolute right-2 top-1.5 text-xs text-slate-400">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3 text-right font-medium text-slate-700">{formatCurrency(calculations.valMargenError)}</td>
-                                                </tr>
-                                                <tr className="border-b border-slate-100">
-                                                    <td className="p-3 font-medium text-slate-600">Tarifa operativa</td>
-                                                    <td className="p-2 text-center">
-                                                        <div className="relative">
-                                                            <input type="number" value={tarifaOperativa} onChange={e=>setTarifaOperativa(e.target.value)} className="w-full py-1 text-center border border-slate-300 rounded font-bold outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 pr-4"/>
-                                                            <span className="absolute right-2 top-1.5 text-xs text-slate-400">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3 text-right font-medium text-slate-700">{formatCurrency(calculations.valTarifaOperativa)}</td>
-                                                </tr>
-                                                <tr className="border-b-2 border-indigo-100 bg-indigo-50/30">
-                                                    <td className="p-3 font-bold text-indigo-900">Costo Ajustado MP</td>
-                                                    <td className="p-3 text-center text-slate-400">-</td>
-                                                    <td className="p-3 text-right font-black text-indigo-700">{formatCurrency(calculations.costoAjustado)}</td>
-                                                </tr>
-                                                <tr className="border-b border-slate-100">
-                                                    <td className="p-3 font-bold text-emerald-600">Utilidad</td>
-                                                    <td className="p-2 text-center">
-                                                        <div className="relative">
-                                                            <input type="number" value={utilidad} onChange={e=>setUtilidad(e.target.value)} className="w-full py-1 text-center border border-emerald-300 rounded font-bold outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 pr-4 text-emerald-700"/>
-                                                            <span className="absolute right-2 top-1.5 text-xs text-emerald-500">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3 text-right font-bold text-emerald-600">{formatCurrency(calculations.valUtilidad)}</td>
-                                                </tr>
-                                                <tr className="border-b-2 border-slate-200 bg-slate-50">
-                                                    <td className="p-3 font-bold text-slate-800 text-xs uppercase tracking-wider">Precio Venta sin IVA (Unitario)</td>
-                                                    <td className="p-3 text-center text-slate-400">-</td>
-                                                    <td className="p-3 text-right font-black text-slate-800">{formatCurrency(calculations.precioVentaSinIva)}</td>
-                                                </tr>
-                                                <tr className="border-b border-slate-100">
-                                                    <td className="p-3 font-medium text-slate-600">IVA</td>
-                                                    <td className="p-2 text-center">
-                                                        <div className="relative">
-                                                            <input type="number" value={iva} onChange={e=>setIva(e.target.value)} className="w-full py-1 text-center border border-slate-300 rounded font-bold outline-none focus:border-indigo-500 pr-4"/>
-                                                            <span className="absolute right-2 top-1.5 text-xs text-slate-400">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3 text-right font-medium text-slate-700">{formatCurrency(calculations.valIva)}</td>
-                                                </tr>
-                                                <tr className="border-b border-slate-100">
-                                                    <td className="p-3 font-medium text-slate-600">Comisión Terminal</td>
-                                                    <td className="p-2 text-center">
-                                                        <div className="relative">
-                                                            <input type="number" step="any" value={comision} onChange={e=>setComision(e.target.value)} className="w-full py-1 text-center border border-slate-300 rounded font-bold outline-none focus:border-indigo-500 pr-4"/>
-                                                            <span className="absolute right-2 top-1.5 text-xs text-slate-400">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3 text-right font-medium text-slate-700">{formatCurrency(calculations.valComision)}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* Resultados Finales */}
-                                    <div className="p-6 bg-slate-900 border-t-4 border-emerald-500 text-white">
-                                        <div className="text-center mb-6">
-                                            <span className="block text-emerald-400 font-bold uppercase tracking-widest text-xs mb-1">Precio de Venta Sugerido</span>
-                                            <span className="block text-5xl font-black text-white drop-shadow-md">{formatCurrency(calculations.precioVentaFinal)}</span>
-                                            <span className="block text-slate-400 text-xs mt-2 font-medium">Por Paquete/Unidad Final</span>
-                                        </div>
-                                        
-                                        <div className="flex justify-between items-center p-4 bg-slate-800 rounded-xl border border-slate-700">
-                                            <span className="font-bold text-slate-300 text-sm">Costo de Producción Real:</span>
-                                            <span className="font-black text-amber-400 text-xl">{formatCurrency(calculations.costoProduccion)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        const root = createRoot(document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
