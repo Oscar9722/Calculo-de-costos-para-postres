@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CookieCost Manager Pro</title>
+    <title>SweetCost Manager</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -60,16 +60,16 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // Componente reutilizable para el Botón de Ayuda
+        // Componente reutilizable para el Botón de Ayuda (Corregido)
         const HelpBtn = ({ text }) => {
             const [show, setShow] = useState(false);
             return (
-                <span className="relative inline-block ml-2 cursor-pointer">
+                <span className="relative inline-block ml-2 cursor-pointer" style={{ zIndex: show ? 999 : 1 }}>
                     <button type="button" onClick={() => setShow(!show)} onBlur={() => setTimeout(() => setShow(false), 200)} className="text-gray-400 hover:text-blue-600 focus:outline-none transition-colors">
                         <i className="fas fa-question-circle"></i>
                     </button>
                     {show && (
-                        <div className="absolute z-50 w-64 p-3 mt-2 text-sm font-normal text-white bg-gray-800 rounded-lg shadow-xl -left-28 top-full transform transition-all">
+                        <div className="absolute w-56 sm:w-64 p-3 mt-2 text-sm font-normal text-white bg-gray-800 rounded-lg shadow-xl left-1/2 transform -translate-x-1/2 top-full transition-all">
                             {text}
                             <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
                         </div>
@@ -105,7 +105,7 @@
             return (
                 <div className="max-w-6xl mx-auto p-4">
                     <header className="bg-white shadow rounded-lg mb-6 p-4 flex justify-between items-center overflow-x-auto">
-                        <h1 className="text-2xl font-extrabold text-gray-800 whitespace-nowrap"><i className="fas fa-cookie-bite text-orange-500"></i> CookieCost Pro</h1>
+                        <h1 className="text-2xl font-extrabold text-gray-800 whitespace-nowrap"><i className="fas fa-cookie-bite text-orange-500"></i> SweetCost Manager</h1>
                         <nav className="flex space-x-2 ml-4">
                             <TabBtn active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} icon="fa-box" text="Inventario" />
                             <TabBtn active={activeTab === 'recipes'} onClick={() => setActiveTab('recipes')} icon="fa-book" text="Recetas" />
@@ -141,7 +141,6 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                // Forzamos a guardar siempre como 'qty' para normalizar la base de datos
                 const dataToSave = {
                     ...form,
                     qty: Number(form.qty),
@@ -158,7 +157,6 @@
             };
 
             const handleEdit = (item) => {
-                // Recupera qty, o el nombre antiguo 'cantidad' si existía
                 const itemQty = item.qty || item.cantidad || '';
                 setForm({
                     name: item.name || '',
@@ -187,9 +185,8 @@
                 (filterCategory === 'All' || i.category === filterCategory)
             );
 
-            // Ordenamiento seguro a prueba de NaNs
             filteredList.sort((a, b) => {
-                const qtyA = a.qty || a.cantidad || 1; // Evita dividir entre 0
+                const qtyA = a.qty || a.cantidad || 1;
                 const qtyB = b.qty || b.cantidad || 1;
                 const priceA = a.price || 0;
                 const priceB = b.price || 0;
@@ -272,7 +269,6 @@
                             </thead>
                             <tbody>
                                 {filteredList.map(item => {
-                                    // Variables seguras para evitar NaN
                                     const safeQty = Number(item.qty) || Number(item.cantidad) || 0;
                                     const safePrice = Number(item.price) || 0;
                                     const unitCost = safeQty > 0 ? (safePrice / safeQty) : 0;
@@ -417,12 +413,15 @@
         function Analysis({ recipes, inventory }) {
             const [selRecipeId, setSelRecipeId] = useState('');
             const [packaging, setPackaging] = useState([]);
+            // Agregamos IVA y Terminal al estado editable
             const [prodVars, setProdVars] = useState({ 
                 totalPieces: 10, 
                 piecesPerPack: 1,
                 marginError: 5,
                 opFee: 10,
-                utility: 50
+                utility: 50,
+                vat: 16,
+                terminalFee: 4.06
             });
 
             const recipe = recipes.find(r => r.id === selRecipeId);
@@ -436,13 +435,12 @@
             };
             const handleRemovePack = (index) => setPackaging(packaging.filter((_, i) => i !== index));
 
-            // Cálculos Seguros contra NaN
             let totalMP = 0;
             if (recipe) {
                 recipe.ingredients.forEach(ing => {
                     const item = inventory.find(x => x.id === ing.invId);
                     if (item) {
-                        const itemQty = Number(item.qty) || Number(item.cantidad) || 1; // Previene dividir entre cero
+                        const itemQty = Number(item.qty) || Number(item.cantidad) || 1;
                         totalMP += (Number(item.price) / itemQty) * ing.qty;
                     }
                 });
@@ -452,7 +450,7 @@
             packaging.forEach(pack => {
                 const item = inventory.find(x => x.id === pack.invId);
                 if (item) {
-                    const itemQty = Number(item.qty) || Number(item.cantidad) || 1; // Previene dividir entre cero
+                    const itemQty = Number(item.qty) || Number(item.cantidad) || 1;
                     totalEmp += (Number(item.price) / itemQty) * pack.qty;
                 }
             });
@@ -466,9 +464,10 @@
             const percUtil = prodVars.utility / 100;
             const utilityVal = percUtil < 1 ? (adjustedRM * percUtil) / (1 - percUtil) : 0;
 
-            const priceWoVat = (adjustedRM + utilityVal) / (totalPackages || 1); // Evitar división por cero
-            const vat = priceWoVat * 0.16;
-            const terminalFee = priceWoVat * 0.0406;
+            const priceWoVat = (adjustedRM + utilityVal) / (totalPackages || 1); 
+            // Cálculos con las variables dinámicas de IVA y Terminal
+            const vat = priceWoVat * (prodVars.vat / 100);
+            const terminalFee = priceWoVat * (prodVars.terminalFee / 100);
             
             const exactFinalPrice = priceWoVat + vat + terminalFee + totalEmp;
             const finalPriceRounded = Math.round(exactFinalPrice / 5) * 5;
@@ -510,30 +509,44 @@
                                     <button onClick={handleAddPackaging} className="text-sm text-blue-600 font-bold mt-1"><i className="fas fa-plus"></i> Añadir Empaque</button>
                                 </div>
 
-                                {/* Porcentajes y variables de costo */}
+                                {/* Porcentajes y variables de costo ampliadas */}
                                 <div className="mb-4 bg-blue-50 p-4 rounded border border-blue-200">
-                                    <h3 className="font-bold text-gray-700 mb-3">Márgenes y Tarifas</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <h3 className="font-bold text-gray-700 mb-3">Márgenes, Tarifas e Impuestos</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                                         <div>
-                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
+                                            <label className="block text-xs font-bold mb-1">
                                                 Error (%)
                                                 <HelpBtn text="Porcentaje que representa el error que puede haber al medir mal las porciones o que algunas piezas se desechen. Se sugiere un valor de entre 5% y 8%." />
                                             </label>
                                             <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.marginError} onChange={e => setProdVars({...prodVars, marginError: Number(e.target.value)})} />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
-                                                T. Operativa (%)
+                                            <label className="block text-xs font-bold mb-1">
+                                                T. Oper. (%)
                                                 <HelpBtn text="Corresponde al desgaste de las herramientas y al uso de servicios como luz y gas. Se sugiere un valor entre 10% y 15%." />
                                             </label>
                                             <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.opFee} onChange={e => setProdVars({...prodVars, opFee: Number(e.target.value)})} />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold whitespace-nowrap mb-1">
+                                            <label className="block text-xs font-bold mb-1">
                                                 Utilidad (%)
                                                 <HelpBtn text="Es el porcentaje de ganancia neta que se desea obtener sobre el precio final. Se sugiere un valor entre 50% y 65%." />
                                             </label>
                                             <input type="number" className="w-full border p-2 rounded text-center" value={prodVars.utility} onChange={e => setProdVars({...prodVars, utility: Number(e.target.value)})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold mb-1">
+                                                IVA (%)
+                                                <HelpBtn text="Impuesto al Valor Agregado. Si no pagas ni cobras este impuesto, déjalo en 0." />
+                                            </label>
+                                            <input type="number" step="0.1" className="w-full border p-2 rounded text-center" value={prodVars.vat} onChange={e => setProdVars({...prodVars, vat: Number(e.target.value)})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold mb-1">
+                                                Term. (%)
+                                                <HelpBtn text="Comisión que cobra la terminal (Clip, MercadoPago, etc). Ej. 4.06. Si cobras en efectivo, déjalo en 0." />
+                                            </label>
+                                            <input type="number" step="0.01" className="w-full border p-2 rounded text-center" value={prodVars.terminalFee} onChange={e => setProdVars({...prodVars, terminalFee: Number(e.target.value)})} />
                                         </div>
                                     </div>
                                 </div>
@@ -572,8 +585,8 @@
                                     <tr className="bg-gray-200 font-bold border-b"><td className="p-2">2. Empaque Total (por paquete)</td><td className="p-2 text-right">${totalEmp.toFixed(2)}</td></tr>
                                     
                                     <tr className="border-b text-gray-600"><td className="p-2">Precio de Venta Base (Sin Impuestos)</td><td className="p-2 text-right">${priceWoVat.toFixed(2)}</td></tr>
-                                    <tr className="border-b text-gray-600"><td className="p-2">+ IVA (16%)</td><td className="p-2 text-right">${vat.toFixed(2)}</td></tr>
-                                    <tr className="border-b text-gray-600"><td className="p-2">+ Comisión Terminal (4.06%)</td><td className="p-2 text-right">${terminalFee.toFixed(2)}</td></tr>
+                                    <tr className="border-b text-gray-600"><td className="p-2">+ IVA ({prodVars.vat}%)</td><td className="p-2 text-right">${vat.toFixed(2)}</td></tr>
+                                    <tr className="border-b text-gray-600"><td className="p-2">+ Comisión Terminal ({prodVars.terminalFee}%)</td><td className="p-2 text-right">${terminalFee.toFixed(2)}</td></tr>
                                     
                                     <tr className="bg-blue-600 text-white font-extrabold text-lg"><td className="p-3">PRECIO FINAL (Redondeado)</td><td className="p-3 text-right">${finalPriceRounded.toFixed(2)}</td></tr>
                                     <tr className="bg-blue-100 text-blue-800 text-xs text-center"><td colSpan="2" className="p-1">Precio sugerido exacto: ${exactFinalPrice.toFixed(2)}</td></tr>
