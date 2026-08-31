@@ -132,7 +132,7 @@
 
         // --- MÓDULO: INVENTARIO ---
         function Inventory({ inventory }) {
-            const [form, setForm] = useState({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' });
+            const [form, setForm] = useState({ name: '', qty: '', unit: 'g', price: '', category: 'Ingrediente' });
             const [editId, setEditId] = useState(null);
             const [searchTerm, setSearchTerm] = useState('');
             const [filterCategory, setFilterCategory] = useState('All');
@@ -141,17 +141,32 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
+                // Forzamos a guardar siempre como 'qty' para normalizar la base de datos
+                const dataToSave = {
+                    ...form,
+                    qty: Number(form.qty),
+                    price: Number(form.price)
+                };
+
                 if (editId) {
-                    await window.fs.updateDoc(window.fs.doc(window.db, "inventory", editId), form);
+                    await window.fs.updateDoc(window.fs.doc(window.db, "inventory", editId), dataToSave);
                     setEditId(null);
                 } else {
-                    await window.fs.addDoc(window.fs.collection(window.db, "inventory"), form);
+                    await window.fs.addDoc(window.fs.collection(window.db, "inventory"), dataToSave);
                 }
-                setForm({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' });
+                setForm({ name: '', qty: '', unit: 'g', price: '', category: 'Ingrediente' });
             };
 
             const handleEdit = (item) => {
-                setForm(item);
+                // Recupera qty, o el nombre antiguo 'cantidad' si existía
+                const itemQty = item.qty || item.cantidad || '';
+                setForm({
+                    name: item.name || '',
+                    qty: itemQty,
+                    unit: item.unit || 'g',
+                    price: item.price || '',
+                    category: item.category || 'Ingrediente'
+                });
                 setEditId(item.id);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 if (formRef.current) {
@@ -168,15 +183,23 @@
             };
 
             let filteredList = inventory.filter(i => 
-                i.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
+                (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) && 
                 (filterCategory === 'All' || i.category === filterCategory)
             );
 
+            // Ordenamiento seguro a prueba de NaNs
             filteredList.sort((a, b) => {
-                if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
-                if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
-                if (sortBy === 'price-asc') return (a.price / a.qty) - (b.price / b.qty);
-                if (sortBy === 'price-desc') return (b.price / b.qty) - (a.price / a.qty);
+                const qtyA = a.qty || a.cantidad || 1; // Evita dividir entre 0
+                const qtyB = b.qty || b.cantidad || 1;
+                const priceA = a.price || 0;
+                const priceB = b.price || 0;
+                const unitCostA = priceA / qtyA;
+                const unitCostB = priceB / qtyB;
+
+                if (sortBy === 'name-asc') return (a.name || '').localeCompare(b.name || '');
+                if (sortBy === 'name-desc') return (b.name || '').localeCompare(a.name || '');
+                if (sortBy === 'price-asc') return unitCostA - unitCostB;
+                if (sortBy === 'price-desc') return unitCostB - unitCostA;
             });
 
             return (
@@ -192,7 +215,7 @@
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Cant. Compra</label>
-                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.qty} onChange={e => setForm({...form, qty: Number(e.target.value)})} />
+                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.qty} onChange={e => setForm({...form, qty: e.target.value})} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Unidad</label>
@@ -205,7 +228,7 @@
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Precio Total</label>
-                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.price} onChange={e => setForm({...form, price: Number(e.target.value)})} />
+                            <input required type="number" step="0.01" className="w-full border p-2 rounded" value={form.price} onChange={e => setForm({...form, price: e.target.value})} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Categoría</label>
@@ -215,7 +238,7 @@
                             </select>
                         </div>
                         <div className="md:col-span-6 flex justify-end gap-2">
-                            {editId && <button type="button" onClick={() => {setEditId(null); setForm({ name: '', qty: '', unit: '', price: '', category: 'Ingrediente' })}} className="bg-gray-400 text-white px-4 py-2 rounded">Cancelar</button>}
+                            {editId && <button type="button" onClick={() => {setEditId(null); setForm({ name: '', qty: '', unit: 'g', price: '', category: 'Ingrediente' })}} className="bg-gray-400 text-white px-4 py-2 rounded">Cancelar</button>}
                             <button type="submit" className={`px-4 py-2 rounded text-white ${editId ? 'bg-green-600' : 'bg-blue-600'}`}>{editId ? 'Actualizar Producto' : 'Guardar Producto'}</button>
                         </div>
                     </form>
@@ -248,19 +271,26 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredList.map(item => (
-                                    <tr key={item.id} className="hover:bg-gray-100 border-b">
-                                        <td className="p-3">{item.name}</td>
-                                        <td className="p-3"><span className={`px-2 py-1 rounded text-xs text-white ${item.category === 'Ingrediente' ? 'bg-green-500' : 'bg-purple-500'}`}>{item.category}</span></td>
-                                        <td className="p-3">{item.qty} {item.unit}</td>
-                                        <td className="p-3">${item.price.toFixed(2)}</td>
-                                        <td className="p-3 font-semibold text-blue-600">${(item.price / item.qty).toFixed(4)} /{item.unit}</td>
-                                        <td className="p-3 flex space-x-2">
-                                            <button onClick={() => handleEdit(item)} className="text-yellow-600 hover:text-yellow-800"><i className="fas fa-edit"></i></button>
-                                            <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800"><i className="fas fa-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {filteredList.map(item => {
+                                    // Variables seguras para evitar NaN
+                                    const safeQty = Number(item.qty) || Number(item.cantidad) || 0;
+                                    const safePrice = Number(item.price) || 0;
+                                    const unitCost = safeQty > 0 ? (safePrice / safeQty) : 0;
+                                    
+                                    return (
+                                        <tr key={item.id} className="hover:bg-gray-100 border-b">
+                                            <td className="p-3">{item.name}</td>
+                                            <td className="p-3"><span className={`px-2 py-1 rounded text-xs text-white ${item.category === 'Ingrediente' ? 'bg-green-500' : 'bg-purple-500'}`}>{item.category}</span></td>
+                                            <td className="p-3">{safeQty > 0 ? safeQty : <span className="text-red-500 text-xs font-bold">Sin Cantidad</span>} {item.unit}</td>
+                                            <td className="p-3">${safePrice.toFixed(2)}</td>
+                                            <td className="p-3 font-semibold text-blue-600">${unitCost.toFixed(4)} /{item.unit}</td>
+                                            <td className="p-3 flex space-x-2">
+                                                <button onClick={() => handleEdit(item)} className="text-yellow-600 hover:text-yellow-800" title="Editar para corregir cantidad"><i className="fas fa-edit"></i></button>
+                                                <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800"><i className="fas fa-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {filteredList.length === 0 && <tr><td colSpan="6" className="text-center p-4 text-gray-500">No hay productos que coincidan.</td></tr>}
                             </tbody>
                         </table>
@@ -387,7 +417,6 @@
         function Analysis({ recipes, inventory }) {
             const [selRecipeId, setSelRecipeId] = useState('');
             const [packaging, setPackaging] = useState([]);
-            // Ahora los porcentajes son editables por el usuario
             const [prodVars, setProdVars] = useState({ 
                 totalPieces: 10, 
                 piecesPerPack: 1,
@@ -407,43 +436,46 @@
             };
             const handleRemovePack = (index) => setPackaging(packaging.filter((_, i) => i !== index));
 
-            // Cálculos
+            // Cálculos Seguros contra NaN
             let totalMP = 0;
             if (recipe) {
                 recipe.ingredients.forEach(ing => {
                     const item = inventory.find(x => x.id === ing.invId);
-                    if (item) totalMP += (item.price / item.qty) * ing.qty;
+                    if (item) {
+                        const itemQty = Number(item.qty) || Number(item.cantidad) || 1; // Previene dividir entre cero
+                        totalMP += (Number(item.price) / itemQty) * ing.qty;
+                    }
                 });
             }
 
             let totalEmp = 0;
             packaging.forEach(pack => {
                 const item = inventory.find(x => x.id === pack.invId);
-                if (item) totalEmp += (item.price / item.qty) * pack.qty;
+                if (item) {
+                    const itemQty = Number(item.qty) || Number(item.cantidad) || 1; // Previene dividir entre cero
+                    totalEmp += (Number(item.price) / itemQty) * pack.qty;
+                }
             });
 
             const totalPackages = prodVars.totalPieces / (prodVars.piecesPerPack || 1);
             
-            // Fórmulas actualizadas para usar las variables editables
             const marginErrorVal = totalMP * (prodVars.marginError / 100);
             const opFeeVal = totalMP * (prodVars.opFee / 100);
             const adjustedRM = totalMP + marginErrorVal + opFeeVal;
             
-            // Utilidad dinámica
             const percUtil = prodVars.utility / 100;
-            const utilityVal = percUtil < 1 ? (adjustedRM * percUtil) / (1 - percUtil) : 0; // Evitar división por cero si es 100%
+            const utilityVal = percUtil < 1 ? (adjustedRM * percUtil) / (1 - percUtil) : 0;
 
-            const priceWoVat = (adjustedRM + utilityVal) / totalPackages;
+            const priceWoVat = (adjustedRM + utilityVal) / (totalPackages || 1); // Evitar división por cero
             const vat = priceWoVat * 0.16;
             const terminalFee = priceWoVat * 0.0406;
             
             const exactFinalPrice = priceWoVat + vat + terminalFee + totalEmp;
             const finalPriceRounded = Math.round(exactFinalPrice / 5) * 5;
 
-            // Ganancias
-            const costPerPack = (adjustedRM / totalPackages) + totalEmp;
+            const costPerPack = (adjustedRM / (totalPackages || 1)) + totalEmp;
             const profitPerPack = finalPriceRounded - costPerPack;
-            const profitPerPiece = profitPerPack / prodVars.piecesPerPack;
+            const profitPerPiece = profitPerPack / (prodVars.piecesPerPack || 1);
             const totalProfit = profitPerPack * totalPackages;
 
             return (
