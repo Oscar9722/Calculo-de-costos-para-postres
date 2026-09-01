@@ -309,12 +309,58 @@
         }
 
         // --- MÓDULO: RECETAS ---
+        const SearchableSelect = ({ options, value, onChange, placeholder }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const [search, setSearch] = useState('');
+            const wrapperRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setIsOpen(false);
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const selectedOpt = options.find(o => o.id === value);
+            const displayValue = isOpen ? search : (selectedOpt ? selectedOpt.label : '');
+            const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
+
+            return (
+                <div className="relative flex-1" ref={wrapperRef}>
+                    <input 
+                        type="text" 
+                        className="w-full border border-stone-300 focus:border-rose-500 p-2.5 rounded-lg outline-none bg-white cursor-text"
+                        placeholder={placeholder}
+                        value={displayValue}
+                        onChange={e => { setSearch(e.target.value); setIsOpen(true); }}
+                        onClick={() => { setIsOpen(true); setSearch(''); }}
+                    />
+                    <i className="fas fa-chevron-down absolute right-3 top-3.5 text-stone-400 pointer-events-none text-xs"></i>
+                    
+                    {isOpen && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-stone-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                            {filtered.length > 0 ? filtered.map(opt => (
+                                <div 
+                                    key={opt.id} 
+                                    className="p-2.5 hover:bg-rose-50 cursor-pointer text-stone-700 border-b border-stone-50 last:border-0"
+                                    onClick={() => { onChange(opt.id); setIsOpen(false); setSearch(''); }}
+                                >
+                                    {opt.label}
+                                </div>
+                            )) : <div className="p-2.5 text-stone-400 italic text-sm">No se encontraron ingredientes</div>}
+                        </div>
+                    )}
+                </div>
+            );
+        };
         function Recipes({ recipes, inventory }) {
             const [viewMode, setViewMode] = useState('edit');
             const [form, setForm] = useState({ name: '', ingredients: [], instructions: '' });
             const [editId, setEditId] = useState('');
-            const ingList = inventory.filter(i => i.category === 'Ingrediente');
-
+            const ingList = inventory
+                .filter(i => i.category === 'Ingrediente')
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             const resetForm = () => { setForm({ name: '', ingredients: [], instructions: '' }); setEditId(''); };
             const handleLoadRecipe = (id) => {
                 if(!id) { resetForm(); return; }
@@ -381,10 +427,12 @@
                             <h3 className="font-bold text-stone-800 mb-3 border-b border-stone-200 pb-2">Ingredientes de la mezcla</h3>
                             {form.ingredients.map((ing, i) => (
                                 <div key={i} className="flex gap-3 mb-3 items-center">
-                                    <select className="flex-1 border border-stone-300 focus:border-rose-500 bg-white p-2.5 rounded-lg outline-none" value={ing.invId} onChange={e => handleIngChange(i, 'invId', e.target.value)}>
-                                        <option value="">Selecciona ingrediente...</option>
-                                        {ingList.map(inv => <option key={inv.id} value={inv.id}>{inv.name} ({inv.unit})</option>)}
-                                    </select>
+                                   <SearchableSelect 
+                                        options={ingList.map(inv => ({ id: inv.id, label: `${inv.name} (${inv.unit})` }))}
+                                        value={ing.invId}
+                                        onChange={val => handleIngChange(i, 'invId', val)}
+                                        placeholder="Buscar ingrediente..."
+                                    />
                                     <input type="number" placeholder="Cantidad" className="w-32 border border-stone-300 focus:border-rose-500 p-2.5 rounded-lg outline-none" value={ing.qty} onChange={e => handleIngChange(i, 'qty', Number(e.target.value))} />
                                     <button onClick={() => handleRemoveIng(i)} className="text-rose-500 hover:bg-rose-50 p-2.5 rounded-lg transition-colors"><i className="fas fa-times text-lg"></i></button>
                                 </div>
