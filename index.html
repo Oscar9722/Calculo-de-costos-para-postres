@@ -504,16 +504,38 @@
             const [selRecipeId, setSelRecipeId] = useState('');
             const [packaging, setPackaging] = useState([]);
             const [prodVars, setProdVars] = useState({ 
-                totalPieces: 10, 
-                piecesPerPack: 1,
-                marginError: 6,
-                opFee: 16,
-                utility: 65,
-                vat: 16,
-                terminalFee: 4.06
+                totalPieces: 10, piecesPerPack: 1, marginError: 5,
+                opFee: 10, utility: 50, vat: 16, terminalFee: 4.06
             });
 
+            // Buscar la receta seleccionada
             const recipe = recipes.find(r => r.id === selRecipeId);
+
+            // Cargar los datos de la base de datos cuando seleccionas una receta
+            useEffect(() => {
+                if (recipe) {
+                    setPackaging(recipe.packaging || []);
+                    setProdVars(recipe.prodVars || { 
+                        totalPieces: 10, piecesPerPack: 1, marginError: 5,
+                        opFee: 10, utility: 50, vat: 16, terminalFee: 4.06
+                    });
+                }
+            }, [selRecipeId]); // Solo se ejecuta al cambiar la receta seleccionada
+
+            // Función para guardar en Firebase
+            const handleSaveConfig = async () => {
+                if (!selRecipeId) return;
+                try {
+                    await window.fs.updateDoc(window.fs.doc(window.db, "recipes", selRecipeId), {
+                        packaging: packaging,
+                        prodVars: prodVars
+                    });
+                    alert("Configuración de costos guardada exitosamente");
+                } catch (error) {
+                    console.error("Error guardando:", error);
+                    alert("Hubo un error al guardar");
+                }
+            };
             const empList = inventory.filter(i => i.category === 'Empaque').sort((a,b) => (a.name || '').localeCompare(b.name || ''));
             const handleAddPackaging = () => setPackaging([...packaging, { invId: '', qty: 1 }]);
             const handlePackChange = (index, field, val) => {
@@ -655,6 +677,9 @@
                                         <div className="w-full border border-amber-300 p-2 rounded-lg bg-white text-center font-extrabold text-amber-600">{totalPackages.toFixed(1)}</div>
                                     </div>
                                 </div>
+                                <button onClick={handleSaveConfig} className="w-full bg-stone-800 text-white font-bold py-3 rounded-xl shadow-md hover:bg-stone-900 transition-colors mb-6">
+                                    <i className="fas fa-save mr-2"></i> Guardar Configuración de Receta
+                                </button>
                             </>
                         )}
                     </div>
