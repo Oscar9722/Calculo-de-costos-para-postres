@@ -249,29 +249,27 @@
                 </div>
             );
         }
-
-        function App() {
+function App() {
+            // 1. Declaramos TODOS los estados primero
             const [activeTab, setActiveTab] = useState('inventory');
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [inventory, setInventory] = useState([]);
+            const [recipes, setRecipes] = useState([]);
+            const [sales, setSales] = useState([]);
 
+            // 2. Ejecutamos TODOS los efectos (conexiones a Firebase)
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(window.auth, (currentUser) => {
                     setUser(currentUser);
-                    setLoading(false);
+                    if (!currentUser) setLoading(false); 
                 });
                 return () => unsubscribe();
             }, []);
 
-            if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-stone-500">Cargando aplicación...</div>;
-            if (!user) return <Auth />;
-            
-            const [inventory, setInventory] = useState([]);
-            const [recipes, setRecipes] = useState([]);
-            const [sales, setSales] = useState([]);
-            //const [loading, setLoading] = useState(true);
-
             useEffect(() => {
+                if (!user) return; // Solo conectamos a la BD si hay usuario
+                
                 const unsubInv = window.fs.onSnapshot(window.fs.collection(window.db, "inventory"), (snapshot) => {
                     setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 });
@@ -280,14 +278,16 @@
                 });
                 const unsubSales = window.fs.onSnapshot(window.fs.collection(window.db, "sales"), (snapshot) => {
                     setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    setLoading(false);
+                    setLoading(false); // Terminamos de cargar cuando llegan los datos
                 });
                 return () => { unsubInv(); unsubRec(); unsubSales(); };
-            }, []);
+            }, [user]);
 
-            window.initReactApp = () => setLoading(false);
+            // 3. AHORA SÍ, colocamos las condiciones de pantalla
             if (loading) return <div className="flex h-screen items-center justify-center text-xl font-bold text-rose-600"><i className="fas fa-spinner fa-spin mr-3"></i> Conectando a la nube...</div>;
+            if (!user) return <Auth />;
 
+            // 4. Diseño principal de la aplicación
             return (
                 <div className="max-w-6xl mx-auto p-4">
                     <header className="bg-white shadow-sm rounded-xl mb-6 p-4 flex justify-between items-center overflow-x-auto border border-stone-100">
