@@ -259,7 +259,7 @@
 
             // 2. Ejecutamos TODOS los efectos (conexiones a Firebase)
             React.useEffect(() => {
-                const unsubscribe = onAuthStateChanged(window.auth, (currentUser) => {
+                const unsubscribe = window.onAuthStateChanged(window.auth, (currentUser) => {
                     setUser(currentUser);
                     if (!currentUser) setLoading(false); 
                 });
@@ -910,7 +910,6 @@
             );
         }
 
-        // --- MÓDULO: VENTAS ---
         // --- MÓDULO: VENTAS ---
         function Sales({ sales, recipes, inventory }) {
             const todayStr = new Date().toISOString().split('T')[0];
