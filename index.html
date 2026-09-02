@@ -57,6 +57,16 @@
         const auth = getAuth(app);
         const googleProvider = new GoogleAuthProvider();
 
+        // Exponer funciones de autenticación globalmente
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signInWithPopup = signInWithPopup;
+        window.sendPasswordResetEmail = sendPasswordResetEmail;
+        window.updatePassword = updatePassword;
+        window.signOut = signOut;
+        window.deleteUser = deleteUser;
+
         window.fs = { collection, addDoc, getDocs, updateDoc, doc, deleteDoc, query, where };
         window.db = db;
         window.auth = auth;
