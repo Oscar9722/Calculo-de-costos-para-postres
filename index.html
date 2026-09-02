@@ -249,8 +249,7 @@
                 </div>
             );
         }
-function App() {
-            // 1. Declaramos TODOS los estados primero
+        function App() {
             const [activeTab, setActiveTab] = useState('inventory');
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
@@ -268,7 +267,7 @@ function App() {
             }, []);
 
             useEffect(() => {
-                if (!user) return; // Solo conectamos a la BD si hay usuario
+                if (!user) return;
                 
                 const unsubInv = window.fs.onSnapshot(window.fs.collection(window.db, "inventory"), (snapshot) => {
                     setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -278,12 +277,11 @@ function App() {
                 });
                 const unsubSales = window.fs.onSnapshot(window.fs.collection(window.db, "sales"), (snapshot) => {
                     setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    setLoading(false); // Terminamos de cargar cuando llegan los datos
+                    setLoading(false);
                 });
                 return () => { unsubInv(); unsubRec(); unsubSales(); };
             }, [user]);
 
-            // 3. AHORA SÍ, colocamos las condiciones de pantalla
             if (loading) return <div className="flex h-screen items-center justify-center text-xl font-bold text-rose-600"><i className="fas fa-spinner fa-spin mr-3"></i> Conectando a la nube...</div>;
             if (!user) return <Auth />;
 
