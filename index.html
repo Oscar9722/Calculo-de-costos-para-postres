@@ -39,9 +39,9 @@
 
     <!-- Firebase y Lógica de Inicialización -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail, updatePassword, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeFjx39gjV-fCkiLnI38sWs6xWd6hm8Sg",
@@ -53,10 +53,14 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        window.db = getFirestore(app);
-        window.auth = getAuth(app);
-        
-        window.fs = { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc };
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const googleProvider = new GoogleAuthProvider();
+
+        window.fs = { collection, addDoc, getDocs, updateDoc, doc, deleteDoc, query, where };
+        window.db = db;
+        window.auth = auth;
+        window.googleProvider = googleProvider;
 
         signInAnonymously(window.auth).then(() => {
             if(window.initReactApp) window.initReactApp();
@@ -86,9 +90,179 @@
                 </span>
             );
         };
+        
+        function Auth() {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                try {
+                    if (isLogin) {
+                        await signInWithEmailAndPassword(window.auth, email, password);
+                    } else {
+                        if (!acceptedTerms) return alert("Debes aceptar el aviso de privacidad.");
+                        const userCred = await createUserWithEmailAndPassword(window.auth, email, password);
+                        // Crear perfil por defecto
+                        await window.fs.addDoc(window.fs.collection(window.db, "users"), {
+                            uid: userCred.user.uid, companyName: 'Mi Negocio', currency: 'MXN',
+                            defaults: { marginError: 5, opFee: 10, utility: 50, vat: 16, terminalFee: 4.06 }
+                        });
+                    }
+                } catch (err) {
+                    alert("Error: " + err.message);
+                }
+            };
+
+            const handleGoogle = async () => {
+                if (!isLogin && !acceptedTerms) return alert("Debes aceptar el aviso de privacidad.");
+                try {
+                    await signInWithPopup(window.auth, window.googleProvider);
+                } catch (err) { alert(err.message); }
+            };
+
+            const handleReset = async () => {
+                if (!email) return alert("Ingresa tu correo primero.");
+                await sendPasswordResetEmail(window.auth, email);
+                alert("Enlace de recuperación enviado al correo.");
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-stone-100 p-4">
+                    <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md border border-stone-200">
+                        <h2 className="text-2xl font-bold text-stone-800 mb-6 text-center text-rose-700">
+                            {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
+                        </h2>
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            <input type="email" required placeholder="Correo electrónico" className="w-full border p-3 rounded-lg outline-none" value={email} onChange={e => setEmail(e.target.value)} />
+                            <input type="password" required placeholder="Contraseña" className="w-full border p-3 rounded-lg outline-none" value={password} onChange={e => setPassword(e.target.value)} />
+                    
+                            {!isLogin && (
+                                <div className="text-xs text-stone-500">
+                                    <label className="flex items-start gap-2 cursor-pointer">
+                                        <input type="checkbox" className="mt-1" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
+                                        <span>Acepto los <a href="#" className="text-rose-600 underline">Términos y Condiciones</a> y el <a href="#" className="text-rose-600 underline">Aviso de Privacidad</a> (Conforme a la LFPDPPP y protección de derechos ARCO).</span>
+                                    </label>
+                                </div>
+                            )}
+
+                            <button type="submit" className="w-full bg-rose-600 text-white font-bold py-3 rounded-lg hover:bg-rose-700">{isLogin ? 'Entrar' : 'Registrarse'}</button>
+                        </form>
+                
+                        <button onClick={handleGoogle} className="w-full mt-3 bg-white border border-stone-300 text-stone-700 font-bold py-3 rounded-lg hover:bg-stone-50 flex items-center justify-center gap-2">
+                            <i className="fab fa-google text-red-500"></i> Continuar con Google
+                        </button>
+
+                        <div className="mt-4 text-center text-sm text-stone-500">
+                            {isLogin && <p className="mb-2 cursor-pointer hover:text-rose-600" onClick={handleReset}>¿Olvidaste tu contraseña?</p>}
+                            <p className="cursor-pointer" onClick={() => setIsLogin(!isLogin)}>
+                                {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        function Settings({ userProfile }) {
+            const handleDelete = async () => {
+                if (confirm("ADVERTENCIA: Esta acción eliminará permanentemente tu cuenta y todos tus datos (inventario, recetas, ventas). No se puede deshacer. ¿Continuar?")) {
+                    await deleteUser(window.auth.currentUser);
+                }
+            };
+
+            return (
+                <div className="max-w-2xl mx-auto border border-stone-200 rounded-xl p-6 bg-white shadow-sm">
+                    <h3 className="font-bold text-xl text-stone-800 mb-6 border-b pb-2">Configuración del Negocio</h3>
+            
+                    <div className="mb-6 bg-stone-50 p-4 rounded-lg border border-stone-100">
+                        <label className="block text-sm font-semibold text-stone-700 mb-2">Logotipo del Negocio</label>
+                        <input type="file" accept="image/*" className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 mb-2" />
+                        <p className="text-xs text-stone-500 italic">Sube el logotipo de tu negocio. Esta imagen se usará como tu foto de perfil y será fundamental para futuras funciones de la plataforma (ej. reportes y catálogos).</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <label className="block text-sm font-semibold text-stone-700 mb-1">Nombre de la Empresa</label>
+                            <input type="text" className="w-full border border-stone-300 p-2.5 rounded-lg outline-none" defaultValue={userProfile?.companyName} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-stone-700 mb-1">Moneda</label>
+                            <select className="w-full border border-stone-300 p-2.5 rounded-lg outline-none">
+                                <option value="MXN">MXN ($)</option>
+                                <option value="USD">USD ($)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h4 className="font-bold text-stone-700 mb-3">Valores Predeterminados (Márgenes e Impuestos)</h4>
+                    <div className="grid grid-cols-3 gap-3 mb-8">
+                        <div><label className="text-xs font-semibold">Margen Error %</label><input type="number" className="w-full border p-2 rounded" defaultValue={userProfile?.defaults?.marginError} /></div>
+                        <div><label className="text-xs font-semibold">Costo Operativo %</label><input type="number" className="w-full border p-2 rounded" defaultValue={userProfile?.defaults?.opFee} /></div>
+                        <div><label className="text-xs font-semibold">Utilidad %</label><input type="number" className="w-full border p-2 rounded" defaultValue={userProfile?.defaults?.utility} /></div>
+                        <div><label className="text-xs font-semibold">IVA %</label><input type="number" className="w-full border p-2 rounded" defaultValue={userProfile?.defaults?.vat} /></div>
+                        <div><label className="text-xs font-semibold">Comisión Terminal %</label><input type="number" className="w-full border p-2 rounded" defaultValue={userProfile?.defaults?.terminalFee} /></div>
+                    </div>
+
+                    <div className="border-t border-rose-200 pt-6 mt-6">
+                        <button onClick={handleDelete} className="w-full bg-red-100 text-red-600 font-bold py-3 rounded-lg hover:bg-red-200 transition-colors">
+                            Eliminar Cuenta Permanentemente
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        
+        function UserProfile() {
+            const [newPass, setNewPass] = useState('');
+
+            const handleUpdatePass = async (e) => {
+                e.preventDefault();
+                try {
+                    await updatePassword(window.auth.currentUser, newPass);
+                    alert("Contraseña actualizada. Inicia sesión nuevamente.");
+                    window.auth.signOut();
+                } catch (err) { alert("Error (Puede requerir re-autenticación): " + err.message); }
+            };
+
+            return (
+                <div className="max-w-md mx-auto border border-stone-200 rounded-xl p-6 bg-white shadow-sm text-center">
+                    <div className="w-20 h-20 bg-stone-200 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl text-stone-500">
+                        <i className="fas fa-user"></i>
+                    </div>
+                    <p className="text-stone-500 mb-6">{window.auth.currentUser?.email}</p>
+
+                    <form onSubmit={handleUpdatePass} className="mb-6 text-left">
+                        <label className="block text-sm font-semibold text-stone-700 mb-1">Nueva Contraseña</label>
+                        <input type="password" required className="w-full border border-stone-300 p-2.5 rounded-lg outline-none mb-3" value={newPass} onChange={e => setNewPass(e.target.value)} />
+                        <button type="submit" className="w-full bg-stone-800 text-white font-bold py-2 rounded-lg hover:bg-stone-900">Actualizar Contraseña</button>
+                    </form>
+
+                    <button onClick={() => window.auth.signOut()} className="w-full border border-stone-300 text-stone-700 font-bold py-3 rounded-lg hover:bg-stone-50">
+                        <i className="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
+                    </button>
+                </div>
+            );
+        }
 
         function App() {
             const [activeTab, setActiveTab] = useState('inventory');
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            React.useEffect(() => {
+                const unsubscribe = onAuthStateChanged(window.auth, (currentUser) => {
+                    setUser(currentUser);
+                    setLoading(false);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-stone-500">Cargando aplicación...</div>;
+            if (!user) return <Auth />;
+            
             const [inventory, setInventory] = useState([]);
             const [recipes, setRecipes] = useState([]);
             const [sales, setSales] = useState([]);
@@ -123,6 +297,12 @@
                             <TabBtn active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon="fa-calculator" text="Análisis" />
                             <TabBtn active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} icon="fa-chart-line" text="Ventas" />
                         </nav>
+                        <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeTab === 'settings' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}>
+                            <i className="fas fa-cog"></i>
+                        </button>
+                        <button onClick={() => setActiveTab('user')} className={`px-4 py-2 rounded-lg font-semibold transition-colors ${activeTab === 'user' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}>
+                            <i className="fas fa-user"></i>
+                        </button>
                     </header>
 
                     <main className="bg-white shadow-sm rounded-xl p-6 border border-stone-100">
@@ -130,6 +310,8 @@
                         {activeTab === 'recipes' && <Recipes recipes={recipes} inventory={inventory} />}
                         {activeTab === 'analysis' && <Analysis recipes={recipes} inventory={inventory} />}
                         {activeTab === 'sales' && <Sales sales={sales} recipes={recipes} inventory={inventory} />}
+                        {activeTab === 'settings' && <Settings />}
+                        {activeTab === 'user' && <UserProfile />}
                     </main>
                 </div>
             );
